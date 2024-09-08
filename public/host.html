@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trivia Host</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .event-list {
+            display: grid;
+            gap: 20px;
+        }
+        .event-item {
+            cursor: pointer;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            padding: 15px;
+        }
+        .event-item:hover {
+            background-color: #d5dbdb;
+        }
+        .selected-event {
+            background-color: #bdc3c7;
+        }
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .event-title {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .event-status {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+        .status-waiting {
+            background-color: #f39c12;
+            color: white;
+        }
+        .status-hosting {
+            background-color: #2ecc71;
+            color: white;
+        }
+        .status-ended {
+            background-color: #e74c3c;
+            color: white;
+        }
+        .event-info {
+            font-size: 14px;
+        }
+        #questionList {
+            margin-top: 20px;
+        }
+        .question-item {
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Trivia Host - Quiz Games</h1>
+        <div id="playerCount" style="text-align: center; font-size: 18px; margin-bottom: 20px;"></div>
+        <div id="eventList" class="event-list"></div>
+        <div id="questionList"></div>
+        <div id="scoreBoard"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let selectedEventId = null;
+        let synth = window.speechSynthesis;
+
+        socket.on('connect', () => {
+            socket.emit('requestEvents');
+        });
+
+        socket.on('eventsUpdate', (events) => {
+            const eventList = document.getElementById('eventList');
+            eventList.innerHTML = '';
+            events.forEach(event => {
+                const eventItem = document.createElement('div');
+                eventItem.className = 'event-item';
+                eventItem.innerHTML = `
+                    <div class="event-header">
+                        <span class="event-title">${event.tensukien}</span>
+                        <span class="event-status status-${event.status}">${event.status}</span>
+                    </div>
+                    <div class="event-info">
+                        <p>Players: ${event.playerCount}</p>
+                        <p>Start: ${new Date(event.thoigianbatdau).toLocaleString()}</p>
+                        <p>End: ${new Date(event.thoigianketthuc).toLocaleString()}</p>
+                        <p>Brand: ${event.brand_name}</p>
+                    </div>
+                `;
+                eventItem.addEventListener('click', () => selectEvent(event.id_sukien));
+                eventList.appendChild(eventItem);
+            });
+        });
+
+        socket.on('playerCountUpdate', (count) => {
+            document.getElementById('playerCount').textContent = `Players: ${count}`;
+        });
+
+        socket.on('scoreUpdate', (scores) => {
+            displayScores(scores);
+        });
+
+        socket.on('eventQuestions', ({ eventId, questions }) => {
+            if (eventId === selectedEventId) {
+                displayQuestions(questions);
+            }
+        });
+
+        socket.on('newQuestion', (question) => {
+            displayQuestion(question);
+            speakQuestion(question.questionText);
+        });
+
+        function selectEvent(eventId) {
+            selectedEventId = eventId;
+            document.querySelectorAll('.event-item').forEach(item => {
+                item.classList.remove('selected-event');
+            });
+            document.querySelector(`.event-item:nth-child(${Array.from(document.querySelectorAll('.event-item')).findIndex(item => item.querySelector('.event-title').textContent === event.tensukien) + 1})`).classList.add('selected-event');
+            socket.emit('requestEventQuestions', eventId);
+        }
+
+        function displayQuestion(question) {
+            const questionList = document.getElementById('questionList');
+            questionList.innerHTML = `
+                <h2>Current Question</h2>
+                <div class="question-item">
+                    <p><strong>Question:</strong> ${question.questionText}</p>
+                    <p>Number of answer choices: ${question.answers.length}</p>
+                </div>
+            `;
+        }
+
+        function speakQuestion(text) {
+            if (synth.speaking) {
+                synth.cancel();
+            }
+            const utterance = new SpeechSynthesisUtterance(text);
+            synth.speak(utterance);
+        }
+
+        function displayQuestions(questions) {
+            const questionList = document.getElementById('questionList');
+            questionList.innerHTML = '<h2>Questions</h2>';
+            questions.forEach((question, index) => {
+                const questionItem = document.createElement('div');
+                questionItem.className = 'question-item';
+                questionItem.innerHTML = `
+                    <p><strong>Question ${index + 1}:</strong> ${question.questionText}</p>
+                    <p>Number of answer choices: ${question.answerCount}</p>
+                `;
+                questionList.appendChild(questionItem);
+            });
+        }
+
+        function displayScores(scores) {
+            const scoreBoard = document.getElementById('scoreBoard');
+            scoreBoard.innerHTML = '<h2>Scores</h2>';
+            for (const [playerId, score] of Object.entries(scores)) {
+                scoreBoard.innerHTML += `<p>Player ${playerId}: ${score === null ? 'Not answered' : score}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

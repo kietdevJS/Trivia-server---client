@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Trivia Player</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        #joinRoom {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        input, button {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #answers {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        #answers button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 15px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #answers button:hover {
+            background-color: #2980b9;
+        }
+        #answers button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .selected {
+            background-color: #f39c12 !important;
+        }
+        .correct {
+            background-color: #2ecc71 !important;
+        }
+        .incorrect {
+            background-color: #e74c3c !important;
+        }
+        #countdown {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        /* Add these new styles for the modal dialog */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 400px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Trivia Player</h1>
+        <div id="playerId" style="text-align: center; font-weight: bold;"></div>
+        <div id="waitingArea">
+            <p>Waiting for the game to start...</p>
+        </div>
+        <div id="joinRoom" style="display: none;">
+            <input type="text" id="roomCodeInput" placeholder="Enter Room Code">
+            <button id="joinRoomBtn">Join Room</button>
+        </div>
+        <div id="countdown" style="display: none;"></div>
+        <div id="gameArea" style="display: none;">
+            <div id="timer"></div>
+            <h2 id="question"></h2>
+            <div id="answers"></div>
+        </div>
+        <div id="finalScore" style="display: none;"></div>
+        <div id="scoreArea"></div>
+    </div>
+
+    <!-- Add this new modal dialog -->
+    <div id="scoreModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Game Over!</h2>
+            <p id="modalScore"></p>
+        </div>
+    </div>
+
+    <script>
+        const socket = io({
+            reconnectionAttempts: 5,
+            timeout: 10000,
+            transports: ['websocket', 'polling'] // Try both WebSocket and long-polling
+        });
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            checkGameStatus();
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            alert('Unable to connect to the game server. Please check your connection and try again.');
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.log('Disconnected from server. Reason:', reason);
+            if (reason === 'io server disconnect') {
+                // The disconnection was initiated by the server, you need to reconnect manually
+                socket.connect();
+            }
+            // else the socket will automatically try to reconnect
+        });
+
+        let currentRoom = null;
+        let selectedAnswer = null;
+        let gameStartTime = null;
+        let myPlayerId = null;
+
+        // Get userId from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('userId');
+
+        // Add this function at the beginning of the script
+        function checkGameStatus() {
+            socket.emit('checkGameStatus');
+        }
+
+        // Call this function when the page loads
+        window.onload = checkGameStatus;
+
+        socket.on('gameStarting', ({ roomCode, startTime }) => {
+            console.log('Game starting:', roomCode, startTime);
+            document.getElementById('waitingArea').style.display = 'none';
+            document.getElementById('joinRoom').style.display = 'block';
+            document.getElementById('roomCodeInput').value = roomCode;
+            gameStartTime = startTime;
+            startCountdown();
+        });
+
+        socket.on('newQuestion', (question) => {
+            console.log('New question received:', question);
+            selectedAnswer = null;
+            const questionElement = document.getElementById('question');
+            const answersDiv = document.getElementById('answers');
+            
+            if (question && question.questionText && Array.isArray(question.answers)) {
+                questionElement.textContent = question.questionText;
+                answersDiv.innerHTML = '';
+                question.answers.forEach(answer => {
+                    const button = document.createElement('button');
+                    button.textContent = answer;
+                    button.addEventListener('click', () => submitAnswer(answer, button));
+                    answersDiv.appendChild(button);
+                });
+                startTimer();
+                document.getElementById('gameArea').style.display = 'block';
+            } else {
+                console.error('Invalid question data received:', question);
+                alert('There was an error loading the question. Please try refreshing the page.');
+            }
+        });
+
+        socket.on('questionEnded', (correctAnswer) => {
+            console.log('Question ended, correct answer:', correctAnswer);
+            const buttons = document.querySelectorAll('#answers button');
+            buttons.forEach(button => {
+                if (button.textContent === correctAnswer) {
+                    button.classList.add('correct');
+                }
+                button.disabled = true;
+            });
+        });
+
+        socket.on('gameOver', (finalScore) => {
+            console.log('Game over, final score:', finalScore);
+            document.getElementById('gameArea').style.display = 'none';
+            
+            const modal = document.getElementById('scoreModal');
+            const modalScore = document.getElementById('modalScore');
+            modalScore.textContent = `Your final score: ${finalScore}`;
+            modal.style.display = 'block';
+        });
+
+        socket.on('roomClosed', (message) => {
+            alert(message);
+            document.getElementById('joinRoom').style.display = 'none';
+            document.getElementById('waitingArea').textContent = 'The game has already started. Please wait for the next game.';
+        });
+
+        socket.on('noActiveGame', (message) => {
+            document.getElementById('waitingArea').textContent = message;
+        });
+
+        socket.on('roomNotReady', (message) => {
+            alert(message);
+            document.getElementById('joinRoom').style.display = 'none';
+            document.getElementById('waitingArea').textContent = message;
+        });
+
+        document.getElementById('joinRoomBtn').addEventListener('click', () => {
+            const roomCode = document.getElementById('roomCodeInput').value;
+            console.log('Attempting to join room:', roomCode);
+            socket.emit('joinRoom', roomCode, userId);
+        });
+
+        socket.on('roomNotFound', () => {
+            console.log('Room not found');
+            alert('Room not found. Please check the room code and try again.');
+        });
+
+        function startCountdown() {
+            const countdownElement = document.getElementById('countdown');
+            countdownElement.style.display = 'block';
+            
+            function updateCountdown() {
+                const now = new Date().getTime();
+                const timeLeft = gameStartTime - now;
+
+                if (timeLeft > 0) {
+                    const seconds = Math.floor(timeLeft / 1000);
+                    countdownElement.textContent = `Game starts in ${seconds} seconds`;
+                    setTimeout(updateCountdown, 1000);
+                } else {
+                    countdownElement.style.display = 'none';
+                }
+            }
+
+            updateCountdown();
+        }
+
+        socket.on('roomJoined', ({ roomCode, playerId }) => {
+            currentRoom = roomCode;
+            myPlayerId = playerId;
+            document.getElementById('playerId').textContent = `Your Player ID: ${playerId}`;
+            document.getElementById('joinRoom').style.display = 'none';
+            document.getElementById('countdown').style.display = 'block';
+            document.getElementById('gameArea').style.display = 'block';
+        });
+
+        socket.on('playerJoined', ({ count, playerId }) => {
+            if (playerId !== myPlayerId) {
+                console.log(`Player ${playerId} joined. Total players: ${count}`);
+            }
+        });
+
+        socket.on('playerLeft', ({ count, playerId }) => {
+            console.log(`Player ${playerId} left. Total players: ${count}`);
+        });
+
+        socket.on('gameError', (errorMessage) => {
+            console.error('Game error:', errorMessage);
+            alert('Game Error: ' + errorMessage);
+        });
+
+        function submitAnswer(answer, button) {
+            if (currentRoom && !selectedAnswer) {
+                selectedAnswer = answer;
+                socket.emit('submitAnswer', currentRoom, answer);
+                const buttons = document.querySelectorAll('#answers button');
+                buttons.forEach(btn => {
+                    if (btn === button) {
+                        btn.classList.add('selected');
+                    } else {
+                        btn.disabled = true;
+                    }
+                });
+            }
+        }
+
+        function startTimer() {
+            const timerElement = document.getElementById('timer');
+            let timeLeft = 10;
+            timerElement.textContent = `Time left: ${timeLeft}`;
+            const timerInterval = setInterval(() => {
+                timeLeft--;
+                timerElement.textContent = `Time left: ${timeLeft}`;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                }
+            }, 1000);
+        }
+
+        // Close the modal when clicking on the close button
+        const closeBtn = document.getElementsByClassName('close')[0];
+        closeBtn.onclick = function() {
+            const modal = document.getElementById('scoreModal');
+            modal.style.display = 'none';
+        }
+
+        // Close the modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('scoreModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Request the current room code when the page loads
+        socket.emit('requestCurrentRoomCode');
+
+        socket.on('currentRoomCode', (data) => {
+            console.log('Received current room code:', data.roomCode);
+            document.getElementById('roomCodeInput').value = data.roomCode;
+        });
+
+        socket.on('roomCodeUpdated', (data) => {
+            console.log('Room code updated:', data.roomCode);
+            document.getElementById('roomCodeInput').value = data.roomCode;
+            alert('The room code has been updated. Please try joining again with the new code.');
+        });
+
+        socket.on('roomCodeGenerated', (data) => {
+            console.log('New room code generated:', data.roomCode);
+            document.getElementById('roomCodeInput').value = data.roomCode;
+        });
+
+        socket.on('scoreUpdate', (newScore) => {
+            console.log('Received new score:', newScore);
+            // Update the score display in your UI
+            document.getElementById('playerScore').textContent = newScore;
+        });
+    </script>
+</body>
+</html>
