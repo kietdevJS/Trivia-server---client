@@ -29,6 +29,7 @@ let playerCount = 0;
 let joinableFrom = null;
 let joinableUntil = null;
 let playerIds = new Map();
+const playerTokens = new Map();
 
 app.use(express.static('public'));
 
@@ -132,7 +133,7 @@ io.on('connection', (socket) => {
 
   socket.on('joinRoom', (roomCode, userId, eventId, gameId, accessToken) => {
     // You might want to verify the accessToken and other parameters here
-    console.log('Join attempt:', { roomCode, userId, eventId, gameId });
+    console.log('Join attempt:', { roomCode, userId, eventId, gameId, accessToken });
 
     const now = new Date();
     console.log(`Join room attempt: ${roomCode}, Current room: ${currentRoomCode}`);
@@ -147,7 +148,8 @@ io.on('connection', (socket) => {
     if (currentRoomCode === roomCode && now >= joinableFrom && now < joinableUntil) {
       socket.join(currentRoomCode);
       const playerId = userId || uuidv4().substring(0, 6).toUpperCase();
-      playerIds.set(socket.id, playerId);
+      playerIds.set(socket.id, { playerId, eventId, gameId });
+      playerTokens.set(playerId, accessToken);
       if (currentRoom) {
         currentRoom.players.push(socket.id);
         currentRoom.scores[playerId] = 0;
@@ -175,7 +177,7 @@ io.on('connection', (socket) => {
   socket.on('submitAnswer', (roomCode, answer) => {
     if (currentRoomCode === roomCode && currentRoom) {
       const currentQuestion = currentRoom.questions[currentRoom.currentQuestionIndex];
-      const playerId = playerIds.get(socket.id);
+      const playerId = playerIds.get(socket.id).playerId;
       
       if (!currentRoom.answeredPlayers.includes(playerId)) {
         if (answer === currentQuestion.correctAnswer) {
@@ -201,9 +203,10 @@ io.on('connection', (socket) => {
       const index = currentRoom.players.indexOf(socket.id);
       if (index !== -1) {
         currentRoom.players.splice(index, 1);
-        const playerId = playerIds.get(socket.id);
+        const playerId = playerIds.get(socket.id).playerId;
         delete currentRoom.scores[playerId];
         playerIds.delete(socket.id);
+        playerTokens.delete(playerId);
         playerCount--;
         io.to(currentRoomCode).emit('playerLeft', { count: playerCount, playerId });
         io.emit('playerCountUpdate', playerCount);
@@ -295,17 +298,60 @@ function sendQuestion(roomCode) {
   }
 }
 
-function endGame() {
+async function endGame() {
   console.log('Game over, sending scores');
   const sentScores = new Set();
   const top5Players = getTop5Players(currentRoom ? currentRoom.scores : {});
 
-  for (const [socketId, playerId] of playerIds.entries()) {
+  for (const [socketId, playerData] of playerIds.entries()) {
+    const playerId = playerData.playerId;
     if (!sentScores.has(playerId)) {
       const playerScore = currentRoom && currentRoom.scores ? (currentRoom.scores[playerId] || 0) : 0;
       console.log(`Sending score to player ${playerId}: ${playerScore}`);
       io.to(socketId).emit('gameOver', { playerScore, leaderboard: top5Players });
       sentScores.add(playerId);
+
+      // Get eventId and gameId from the stored player data
+      const eventId = playerData.eventId;
+      const gameId = playerData.gameId;
+
+      // Print the POST request details
+      console.log('POST request details for add-point API:');
+      console.log('URL:', 'http://localhost:8080/users/add-point');
+      console.log('Headers:', {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Authorization': `Bearer ${playerTokens.get(playerId)}`
+      });
+      console.log('Body:', JSON.stringify({
+        id: playerId,
+        gameId: gameId,
+        eventId: eventId,
+        scores: playerScore,
+        point: playerScore
+      }, null, 2));
+
+      // Call the add-point API
+      try {
+        const response = await axios.post(
+          'http://localhost:8080/users/add-point',
+          {
+            id: playerId,
+            gameId: gameId,
+            eventId: eventId,
+            scores: playerScore,
+            point: playerScore // Assuming 1 point per correct answer
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json; charset=UTF-8',
+              'Authorization': `Bearer ${playerTokens.get(playerId)}`
+            }
+          }
+        );
+        console.log(`Add-point API response for player ${playerId}:`, response.data);
+      } catch (error) {
+        console.error(`Error calling add-point API for player ${playerId}:`, error.message);
+      }
     }
   }
 
@@ -335,6 +381,7 @@ function endGame() {
   currentEvent = null;
   playerCount = 0;
   playerIds.clear();
+  playerTokens.clear(); // Clear stored tokens
 }
 
 // Add this function to get the top 5 players

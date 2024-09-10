@@ -241,6 +241,33 @@
 
         console.log('URL Parameters:', { userId, eventId, gameId, accessToken });
 
+        // Function to call the API
+        async function callAPI(endpoint, method, data = null) {
+            const url = `http://localhost:8080${endpoint}`; // Replace with your actual API base URL
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            };
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                throw error;
+            }
+        }
+
         // Update the checkGameStatus function
         function checkGameStatus() {
             socket.emit('checkGameStatus', { userId, eventId, gameId, accessToken });
@@ -312,11 +339,12 @@
             });
         });
 
-        socket.on('gameOver', (data) => {
+        socket.on('gameOver', async (data) => {
             const { playerScore, leaderboard } = data;
             document.getElementById('gameArea').style.display = 'none';
             document.getElementById('playerScore').textContent = `Your Final Score: ${playerScore}`;
             
+            // Display leaderboard
             const leaderboardBody = document.getElementById('leaderboardBody');
             leaderboardBody.innerHTML = '';
             
@@ -338,6 +366,8 @@
             
             document.getElementById('gameOverArea').style.display = 'block';
             document.getElementById('gameOverArea').scrollIntoView({ behavior: 'smooth' });
+
+         
         });
 
         socket.on('roomClosed', (message) => {
