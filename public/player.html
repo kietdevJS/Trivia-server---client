@@ -232,13 +232,18 @@
         let gameStartTime = null;
         let myPlayerId = null;
 
-        // Get userId from URL
+        // Get parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId');
+        const eventId = urlParams.get('eventId');
+        const gameId = urlParams.get('gameId');
+        const accessToken = urlParams.get('token');
 
-        // Add this function at the beginning of the script
+        console.log('URL Parameters:', { userId, eventId, gameId, accessToken });
+
+        // Update the checkGameStatus function
         function checkGameStatus() {
-            socket.emit('checkGameStatus');
+            socket.emit('checkGameStatus', { userId, eventId, gameId, accessToken });
         }
 
         // Call this function when the page loads
@@ -351,10 +356,11 @@
             document.getElementById('waitingArea').textContent = message;
         });
 
+        // Update the joinRoom event emission
         document.getElementById('joinRoomBtn').addEventListener('click', () => {
             const roomCode = document.getElementById('roomCodeInput').value;
             console.log('Attempting to join room:', roomCode);
-            socket.emit('joinRoom', roomCode, userId);
+            socket.emit('joinRoom', roomCode, userId, eventId, gameId, accessToken);
         });
 
         socket.on('roomNotFound', () => {
@@ -462,6 +468,12 @@
             console.log('Received new score:', newScore);
             // Update the score display in your UI
             document.getElementById('playerScore').textContent = newScore;
+        });
+
+        socket.on('authError', (message) => {
+            console.error('Authentication error:', message);
+            alert('Authentication error: ' + message);
+            // You might want to redirect the user to a login page or take other appropriate action
         });
     </script>
 </body>

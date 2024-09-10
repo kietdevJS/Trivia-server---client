@@ -130,7 +130,10 @@ async function initializeGame(quizEvent) {
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id);
 
-  socket.on('joinRoom', (roomCode, userId) => {
+  socket.on('joinRoom', (roomCode, userId, eventId, gameId, accessToken) => {
+    // You might want to verify the accessToken and other parameters here
+    console.log('Join attempt:', { roomCode, userId, eventId, gameId });
+
     const now = new Date();
     console.log(`Join room attempt: ${roomCode}, Current room: ${currentRoomCode}`);
     console.log(`Current time: ${now}, Joinable from: ${joinableFrom}, Joinable until: ${joinableUntil}`);
@@ -222,7 +225,10 @@ io.on('connection', (socket) => {
     socket.emit('eventQuestions', { eventId, questions });
   });
 
-  socket.on('checkGameStatus', () => {
+  socket.on('checkGameStatus', ({ userId, eventId, gameId, accessToken }) => {
+    // You might want to verify the accessToken and other parameters here
+    console.log('Checking game status:', { userId, eventId, gameId,accessToken });
+
     const now = new Date();
     if (currentRoomCode && now >= joinableFrom && now < joinableUntil) {
       socket.emit('gameStarting', { roomCode: currentRoomCode, startTime: joinableUntil.getTime() });
@@ -399,4 +405,14 @@ async function getQuestionsForEvent(eventId) {
     console.error('Error fetching questions for event:', error);
     return [];
   }
+}
+
+// You might want to implement a function to verify the access token
+function verifyAccessToken(userId, eventId, gameId, accessToken) {
+    // Implement your token verification logic here
+    // This function should now also check if the userId, eventId, and gameId are valid
+    // Return true if everything is valid, false otherwise
+    // This is just a placeholder function
+    console.log('Verifying:', { userId, eventId, gameId, accessToken });
+    return true;
 }
