@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const axios = require('axios');
 const schedule = require('node-schedule');
 const { v4: uuidv4 } = require('uuid');
+const cron = require('node-cron');
 
 const app = express();
 const server = http.createServer(app);
@@ -14,7 +15,7 @@ const io = new Server(server, {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 6969;
 
 const GAME_START_DELAY = 30000; // 30 seconds delay
 const QUESTION_TIME = 10000; // 10 seconds
@@ -43,21 +44,36 @@ app.get('/player/:userId', (req, res) => {
   res.sendFile(__dirname + '/public/player.html');
 });
 
-async function initializeGame() {
+async function fetchAndScheduleEvents() {
   try {
     const eventsResponse = await axios.get('http://localhost:5001/brand/api/event/allevent');
     events = eventsResponse.data.events
-      .filter(event => event.game_name === 'Trivia')
+      .filter(event => event.id_game === '66deae28ed58f2224f78614f')
       .map(event => ({
         ...event,
         status: 'waiting',
         playerCount: 0
       }));
 
-    io.emit('eventsUpdate', events);
+    console.log('Fetched events:', events);
 
-    if (events.length > 0) {
-      const quizEvent = events[0];
+    // Schedule future events
+    events.forEach(event => {
+      const startTime = new Date(event.thoigianbatdau);
+      if (startTime > new Date()) {
+        schedule.scheduleJob(startTime, () => initializeGame(event));
+      }
+    });
+
+    io.emit('eventsUpdate', events);
+  } catch (error) {
+    console.error('Error fetching and scheduling events:', error);
+  }
+}
+
+async function initializeGame(quizEvent) {
+  try {
+    if (quizEvent) {
       const startTime = new Date(quizEvent.thoigianbatdau);
       joinableFrom = new Date(startTime.getTime() + GAME_START_DELAY);
       const gameStartTime = new Date(joinableFrom.getTime() + GAME_START_DELAY);
@@ -91,8 +107,12 @@ async function initializeGame() {
           scores: {},
           answeredPlayers: []
         };
-        currentEvent.status = 'hosting';
-        io.emit('eventsUpdate', events);
+        if (currentEvent) {
+          currentEvent.status = 'hosting';
+          io.emit('eventsUpdate', events);
+        } else {
+          console.log('Warning: currentEvent is null when trying to start the game');
+        }
 
         console.log('Game data stored in memory:', currentRoom);
         sendQuestion(currentRoomCode);
@@ -100,7 +120,7 @@ async function initializeGame() {
 
       console.log('Game scheduled to start at:', gameStartTime);
     } else {
-      console.log('No Quiz events found');
+      console.log('No Quiz event provided');
     }
   } catch (error) {
     console.error('Error initializing game:', error);
@@ -263,6 +283,20 @@ function sendQuestion(roomCode) {
             if (currentEvent) {
               currentEvent.status = 'ended';
               io.emit('eventsUpdate', events);
+
+              // Show next event info
+              const nextEvent = events.find(event => new Date(event.thoigianbatdau) > new Date());
+              if (nextEvent) {
+                console.log('Next event:', {
+                  id: nextEvent.id_sukien,
+                  name: nextEvent.tensukien,
+                  startTime: nextEvent.thoigianbatdau
+                });
+              } else {
+                console.log('No upcoming events scheduled');
+              }
+            } else {
+              console.log('Warning: currentEvent is null at game end');
             }
             
             // Reset game state
@@ -293,9 +327,15 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// Schedule hourly event fetching
+cron.schedule('0 * * * *', () => {
+  console.log('Fetching events hourly');
+  fetchAndScheduleEvents();
+});
+
 server.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
-  initializeGame();
+  fetchAndScheduleEvents(); // Initial fetch and schedule
 });
 
 function generateRoomCode() {
