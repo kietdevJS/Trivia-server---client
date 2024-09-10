@@ -226,6 +226,16 @@
             startCountdown();
         });
 
+        // Add this function for text-to-speech
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                speechSynthesis.speak(utterance);
+            } else {
+                console.log("Text-to-speech not supported in this browser.");
+            }
+        }
+
         socket.on('newQuestion', (question) => {
             console.log('New question received:', question);
             selectedAnswer = null;
@@ -234,6 +244,9 @@
             
             if (question && question.questionText && Array.isArray(question.answers)) {
                 questionElement.textContent = question.questionText;
+                // Speak the question
+                speakText(question.questionText);
+                
                 answersDiv.innerHTML = '';
                 question.answers.forEach(answer => {
                     const button = document.createElement('button');
