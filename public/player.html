@@ -146,6 +146,29 @@
             background-color: #1e3799;
             border: 2px solid #ffd700;
         }
+
+        #countdown {
+            background-color: #16213e;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        #countdownBar {
+            width: 100%;
+            height: 20px;
+            background-color: #0f3460;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #countdownProgress {
+            width: 100%;
+            height: 100%;
+            background-color: #ffd700;
+            transition: width 1s linear;
+        }
     </style>
 </head>
 <body>
@@ -159,7 +182,11 @@
             <input type="text" id="roomCodeInput" placeholder="Enter Room Code">
             <button id="joinRoomBtn">Join Game</button>
         </div>
-        <div id="countdown" style="display: none;"></div>
+        <div id="countdown" style="display: none;">
+            <div id="countdownBar">
+                <div id="countdownProgress"></div>
+            </div>
+        </div>
         <div id="gameArea" style="display: none;">
             <div id="timer"></div>
             <h2 id="question"></h2>
@@ -337,16 +364,21 @@
 
         function startCountdown() {
             const countdownElement = document.getElementById('countdown');
+            const countdownProgress = document.getElementById('countdownProgress');
             countdownElement.style.display = 'block';
+            
+            const totalDuration = gameStartTime - new Date().getTime();
+            const startTime = new Date().getTime();
             
             function updateCountdown() {
                 const now = new Date().getTime();
-                const timeLeft = gameStartTime - now;
+                const elapsed = now - startTime;
+                const remaining = totalDuration - elapsed;
 
-                if (timeLeft > 0) {
-                    const seconds = Math.floor(timeLeft / 1000);
-                    countdownElement.textContent = `Game starts in ${seconds} seconds`;
-                    setTimeout(updateCountdown, 1000);
+                if (remaining > 0) {
+                    const progressPercentage = (elapsed / totalDuration) * 100;
+                    countdownProgress.style.width = (100 - progressPercentage) + '%';
+                    requestAnimationFrame(updateCountdown);
                 } else {
                     countdownElement.style.display = 'none';
                 }
