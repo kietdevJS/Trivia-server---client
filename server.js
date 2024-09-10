@@ -261,62 +261,82 @@ function sendQuestion(roomCode) {
         io.to(currentRoomCode).emit('questionEnded', question.correctAnswer);
         
         setTimeout(() => {
-          currentRoom.currentQuestionIndex++;
+          if (currentRoom) {  // Add this check
+            currentRoom.currentQuestionIndex++;
           
-          if (currentRoom.currentQuestionIndex < currentRoom.questions.length) {
-            console.log('Sending next question');
-            sendQuestion(currentRoomCode);
-          } else {
-            console.log('Game over, sending scores');
-            const sentScores = new Set();
-
-            for (const [socketId, playerId] of playerIds.entries()) {
-              if (!sentScores.has(playerId)) {
-                const playerScore = currentRoom.scores[playerId] || 0;
-                console.log(`Sending score to player ${playerId}: ${playerScore}`);
-                io.to(socketId).emit('gameOver', playerScore);
-                sentScores.add(playerId);
-              }
-            }
-
-            console.log('Game Over - Scores:', currentRoom.scores);
-            if (currentEvent) {
-              currentEvent.status = 'ended';
-              io.emit('eventsUpdate', events);
-
-              // Show next event info
-              const nextEvent = events.find(event => new Date(event.thoigianbatdau) > new Date());
-              if (nextEvent) {
-                console.log('Next event:', {
-                  id: nextEvent.id_sukien,
-                  name: nextEvent.tensukien,
-                  startTime: nextEvent.thoigianbatdau
-                });
-              } else {
-                console.log('No upcoming events scheduled');
-              }
+            if (currentRoom.currentQuestionIndex < currentRoom.questions.length) {
+              console.log('Sending next question');
+              sendQuestion(currentRoomCode);
             } else {
-              console.log('Warning: currentEvent is null at game end');
+              endGame();
             }
-            
-            // Reset game state
-            currentRoom = null;
-            currentRoomCode = null;
-            currentEvent = null;
-            playerCount = 0;
-            playerIds.clear();
+          } else {
+            console.log('Game ended unexpectedly: currentRoom is null');
+            endGame();
           }
         }, DELAY_BETWEEN_QUESTIONS);
       }, QUESTION_TIME);
     } else {
       console.error('Invalid question object:', question);
       io.to(currentRoomCode).emit('gameError', 'Invalid question data');
+      endGame();
     }
   } else {
     console.error('Room not found or mismatch. Room code:', roomCode);
     console.error('Current room code:', currentRoomCode);
     io.to(currentRoomCode).emit('gameError', 'Game data is inconsistent. Please try rejoining the game.');
+    endGame();
   }
+}
+
+function endGame() {
+  console.log('Game over, sending scores');
+  const sentScores = new Set();
+  const top5Players = getTop5Players(currentRoom ? currentRoom.scores : {});
+
+  for (const [socketId, playerId] of playerIds.entries()) {
+    if (!sentScores.has(playerId)) {
+      const playerScore = currentRoom && currentRoom.scores ? (currentRoom.scores[playerId] || 0) : 0;
+      console.log(`Sending score to player ${playerId}: ${playerScore}`);
+      io.to(socketId).emit('gameOver', { playerScore, leaderboard: top5Players });
+      sentScores.add(playerId);
+    }
+  }
+
+  console.log('Game Over - Scores:', currentRoom ? currentRoom.scores : 'No scores available');
+  if (currentEvent) {
+    currentEvent.status = 'ended';
+    io.emit('eventsUpdate', events);
+
+    // Show next event info
+    const nextEvent = events.find(event => new Date(event.thoigianbatdau) > new Date());
+    if (nextEvent) {
+      console.log('Next event:', {
+        id: nextEvent.id_sukien,
+        name: nextEvent.tensukien,
+        startTime: nextEvent.thoigianbatdau
+      });
+    } else {
+      console.log('No upcoming events scheduled');
+    }
+  } else {
+    console.log('Warning: currentEvent is null at game end');
+  }
+  
+  // Reset game state
+  currentRoom = null;
+  currentRoomCode = null;
+  currentEvent = null;
+  playerCount = 0;
+  playerIds.clear();
+}
+
+// Add this function to get the top 5 players
+function getTop5Players(scores) {
+  return Object.entries(scores)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([playerId, score]) => ({ playerId, score }));
 }
 
 // Implement rate limiting
