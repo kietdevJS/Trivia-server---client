@@ -227,9 +227,10 @@
         });
 
         // Add this function for text-to-speech
-        function speakText(text) {
+        function speakText(text, rate = 0.8) {
             if ('speechSynthesis' in window) {
                 const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = rate; // Slower speech rate (default is 1)
                 speechSynthesis.speak(utterance);
             } else {
                 console.log("Text-to-speech not supported in this browser.");
@@ -244,16 +245,22 @@
             
             if (question && question.questionText && Array.isArray(question.answers)) {
                 questionElement.textContent = question.questionText;
+                
                 // Speak the question
                 speakText(question.questionText);
                 
                 answersDiv.innerHTML = '';
-                question.answers.forEach(answer => {
+                const answerLabels = ['A', 'B', 'C', 'D'];
+                question.answers.forEach((answer, index) => {
                     const button = document.createElement('button');
-                    button.textContent = answer;
+                    button.textContent = `${answerLabels[index]}. ${answer}`;
                     button.addEventListener('click', () => submitAnswer(answer, button));
                     answersDiv.appendChild(button);
+                    
+                    // Speak each answer option immediately after the question
+                    speakText(`Option ${answerLabels[index]}: ${answer}`, 0.9);
                 });
+                
                 startTimer();
                 document.getElementById('gameArea').style.display = 'block';
             } else {
