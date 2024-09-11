@@ -96,6 +96,18 @@
         #answers button:hover {
             background-color: #16213e;
         }
+        #answers button.selected {
+            background-color: #ffd700;
+            color: #16213e;
+        }
+        #answers button.correct {
+            background-color: #4CAF50;
+            color: white;
+        }
+        #answers button.incorrect {
+            background-color: #f44336;
+            color: white;
+        }
         #gameOverArea {
             background-color: #16213e;
             border-radius: 10px;
@@ -285,17 +297,23 @@
             startCountdown();
         });
 
-        // Add this function for text-to-speech
-        function speakText(text, rate = 0.8) {
+        // Replace the createAudioElement and speakText functions with this:
+        function speakText(text, rate = 0.9) {
             if ('speechSynthesis' in window) {
+                // Cancel any ongoing speech
+                window.speechSynthesis.cancel();
+
                 const utterance = new SpeechSynthesisUtterance(text);
-                utterance.rate = rate; // Slower speech rate (default is 1)
-                speechSynthesis.speak(utterance);
+                utterance.rate = rate;
+                utterance.lang = 'en-US';
+
+                window.speechSynthesis.speak(utterance);
             } else {
                 console.log("Text-to-speech not supported in this browser.");
             }
         }
 
+        // Update the newQuestion event handler
         socket.on('newQuestion', (question) => {
             console.log('New question received:', question);
             selectedAnswer = null;
@@ -305,20 +323,23 @@
             if (question && question.questionText && Array.isArray(question.answers)) {
                 questionElement.textContent = question.questionText;
                 
-                // Speak the question
-                speakText(question.questionText);
-                
                 answersDiv.innerHTML = '';
                 const answerLabels = ['A', 'B', 'C', 'D'];
+                
+                // Prepare the full text to be spoken
+                let fullText = question.questionText + ' ';
                 question.answers.forEach((answer, index) => {
                     const button = document.createElement('button');
                     button.textContent = `${answerLabels[index]}. ${answer}`;
                     button.addEventListener('click', () => submitAnswer(answer, button));
                     answersDiv.appendChild(button);
                     
-                    // Speak each answer option immediately after the question
-                    speakText(`Option ${answerLabels[index]}: ${answer}`, 0.9);
+                    // Add answer to speech text without the label
+                    fullText += `${answer}. `;
                 });
+                
+                // Speak the full text
+                speakText(fullText, 0.9);
                 
                 startTimer();
                 document.getElementById('gameArea').style.display = 'block';
@@ -332,8 +353,11 @@
             console.log('Question ended, correct answer:', correctAnswer);
             const buttons = document.querySelectorAll('#answers button');
             buttons.forEach(button => {
-                if (button.textContent === correctAnswer) {
+                if (button.textContent.includes(correctAnswer)) {
                     button.classList.add('correct');
+                }
+                if (button.classList.contains('selected') && !button.classList.contains('correct')) {
+                    button.classList.add('incorrect');
                 }
                 button.disabled = true;
             });
