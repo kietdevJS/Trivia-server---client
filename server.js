@@ -49,7 +49,7 @@ async function fetchAndScheduleEvents() {
   try {
     const eventsResponse = await axios.get('http://localhost:5001/brand/api/event/allevent');
     events = eventsResponse.data.events
-      .filter(event => event.id_game === '66deae28ed58f2224f78614f')
+      .filter(event => event.id_game === '66e1b64050c7195252586c66')
       .map(event => ({
         ...event,
         status: 'waiting',
