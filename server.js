@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 6969;
 
 const GAME_START_DELAY = 10000; // 30 seconds delay
 const QUESTION_TIME = 10000; // 10 seconds
-const DELAY_BETWEEN_QUESTIONS = 3000; // 3 seconds delay
+const DELAY_BETWEEN_QUESTIONS = 5000; // 3 seconds delay
 
 let currentRoom = null;
 let currentRoomCode = null;

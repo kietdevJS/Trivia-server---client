@@ -181,6 +181,22 @@
             background-color: #ffd700;
             transition: width 1s linear;
         }
+
+        #openAppLink {
+            display: inline-block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            font-size: 1em;
+            background-color: #ffd700;
+            color: #16213e;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+
+        #openAppLink:hover {
+            background-color: #ffed4a;
+        }
     </style>
 </head>
 <body>
@@ -210,6 +226,7 @@
                 <h2>Top 5 Players</h2>
                 <div id="leaderboardBody"></div>
             </div>
+            <a href="intent:#Intent;action=com.example.musicapp;category=android.intent.category.DEFAULT;category=android.intent.category.BROWSABLE;S.msg_from_browser=Launched%20from%20Browser;end" id="openAppLink">Click this link to launch your app from web</a>
         </div>
     </div>
 
@@ -339,7 +356,7 @@
                 });
                 
                 // Speak the full text
-                speakText(fullText, 0.9);
+                speakText(fullText, 1);
                 
                 startTimer();
                 document.getElementById('gameArea').style.display = 'block';
@@ -390,8 +407,6 @@
             
             document.getElementById('gameOverArea').style.display = 'block';
             document.getElementById('gameOverArea').scrollIntoView({ behavior: 'smooth' });
-
-         
         });
 
         socket.on('roomClosed', (message) => {
